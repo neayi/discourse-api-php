@@ -10,7 +10,7 @@
  * @package   DiscourseAPI
  * @author    Original author DiscourseHosting <richard@discoursehosting.com>
  * @copyright 2013, DiscourseHosting.com
- * @license   http://www.gnu.org/licenses/gpl-2.0.html GPLv2 
+ * @license   http://www.gnu.org/licenses/gpl-2.0.html GPLv2
  * @link      https://github.com/discoursehosting/discourse-api-php
  */
 
@@ -21,14 +21,16 @@ class DiscourseAPI
     private $_dcHostname = null;
     private $_httpAuthName = '';
     private $_httpAuthPass = '';
+    private $_ignoreSSL = false;
 
-    function __construct($dcHostname, $apiKey = null, $protocol = 'http', $httpAuthName = '', $httpAuthPass = '')
+    function __construct($dcHostname, $apiKey = null, $protocol = 'http', $httpAuthName = '', $httpAuthPass = '', $ignoreSSL = false)
     {
         $this->_dcHostname = $dcHostname;
         $this->_apiKey = $apiKey;
         $this->_protocol = $protocol;
         $this->_httpAuthName = $httpAuthName;
         $this->_httpAuthPass = $httpAuthPass;
+        $this->_ignoreSSL = $ignoreSSL;
     }
 
     private function _getRequest($reqString, $paramArray = null, $apiUser = 'system')
@@ -45,7 +47,6 @@ class DiscourseAPI
             http_build_query($paramArray)
         );
 
-        // TODO: move post requests to this auth also
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
             "Api-Key: " . $this->_apiKey,
             "Api-Username: $apiUser"
@@ -56,9 +57,23 @@ class DiscourseAPI
             curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
         }
 
+        if ($this->_ignoreSSL)
+        {
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
+        }
+
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         $body = curl_exec($ch);
+
+        $curl_errno = curl_errno($ch);
+        $curl_error = curl_error($ch);
+
+        if ($curl_errno > 0) {
+            throw new Exception("cURL Error ($curl_errno): $curl_error", 1);
+        }
+
         $rc = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
@@ -81,19 +96,25 @@ class DiscourseAPI
 
     private function _putpostRequest($reqString, $paramArray, $apiUser = 'system', $putMethod = false)
     {
-
         $ch = curl_init();
         $url = sprintf(
-            '%s://%s%s?api_key=%s&api_username=%s',
+            '%s://%s%s',
             $this->_protocol,
             $this->_dcHostname,
-            $reqString,
-            $this->_apiKey,
-            $apiUser
-        );
+            $reqString);
 
         curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($paramArray));
+
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            "Api-Key: " . $this->_apiKey,
+            "Api-Username: $apiUser"
+        ]);
+
+        // Hack !
+        $params = http_build_query($paramArray);
+        $params = preg_replace('@tags%5B[0-9]+%5D@', 'tags%5B%5D', $params);
+
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $params);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         if ($putMethod) {
             curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
@@ -104,13 +125,30 @@ class DiscourseAPI
             curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
         }
 
+        if ($this->_ignoreSSL)
+        {
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
+        }
+
         $body = curl_exec($ch);
+
+        $curl_errno = curl_errno($ch);
+        $curl_error = curl_error($ch);
+
+        if ($curl_errno > 0) {
+            throw new Exception("cURL Error ($curl_errno): $curl_error", 1);
+        }
+
         $rc = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
         $resObj = new \stdClass();
         $resObj->http_code = $rc;
         $resObj->apiresult = json_decode($body);
+
+        usleep(500000); // wait a 1/2 of a sec
+
         return $resObj;
     }
 
@@ -130,12 +168,12 @@ class DiscourseAPI
             return false;
         }
 
+        $groupId = false;
         foreach ($obj->apiresult as $group) {
             if ($group->name === $groupname) {
                 $groupId = $group->id;
                 break;
             }
-            $groupId = false;
         }
 
         $params = array(
@@ -175,6 +213,103 @@ class DiscourseAPI
         return $this->_getRequest("/groups/{$group}/members.json");
     }
 
+
+    /**
+     * getPostsByEmbeddedURL
+     *
+     * @param string $url         url to lookup
+     * @return mixed HTTP return code and API return object
+     */
+
+    function getPostsByEmbeddedURL($url)
+    {
+        return $this->_getRequest("/embed/info", array('embed_url' => $url));
+    }
+
+    function getPostByExternalID($external_id)
+    {
+        $apiUser = 'system';
+
+        $reqString = "/t/external_id/{$external_id}.json";
+
+        $ch = curl_init();
+        $url = sprintf(
+            '%s://%s%s',
+            $this->_protocol,
+            $this->_dcHostname,
+            $reqString
+        );
+
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            "API-KEY: " . $this->_apiKey,
+            "API-USERNAME: $apiUser"
+        ]);
+
+        if (!empty($this->_httpAuthName) && !empty($this->_httpAuthPass)) {
+            curl_setopt($ch, CURLOPT_USERPWD, $this->_httpAuthName . ":" . $this->_httpAuthPass);
+            curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
+        }
+
+        if ($this->_ignoreSSL)
+        {
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
+        }
+
+        curl_setopt($ch, CURLOPT_URL, $url);
+
+        // include the response headers in the output
+        curl_setopt($ch, CURLOPT_HEADER, true);
+
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+
+        $result = curl_exec($ch);
+        $rc = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+        $curl_errno = curl_errno($ch);
+        $curl_error = curl_error($ch);
+
+        if ($curl_errno > 0) {
+            throw new Exception("cURL Error ($curl_errno): $curl_error", 1);
+        }
+
+        // how big are the headers
+        $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+        $headerStr = substr($result, 0, $headerSize);
+        $body = substr($result, $headerSize);
+
+        // convert headers to array
+        $headers = $this->headersToArray( $headerStr );
+
+        curl_close($ch);
+
+        if (!empty($headers['location']))
+            return $headers['location'];
+
+        return '';
+    }
+
+    private function headersToArray( $str )
+    {
+        $headers = array();
+        $headersTmpArray = explode( "\r\n" , $str );
+        for ( $i = 0 ; $i < count( $headersTmpArray ) ; ++$i )
+        {
+            // we dont care about the two \r\n lines at the end of the headers
+            if ( strlen( $headersTmpArray[$i] ) > 0 )
+            {
+                // the headers start with HTTP status codes, which do not contain a colon so we can filter them out too
+                if ( strpos( $headersTmpArray[$i] , ":" ) )
+                {
+                    $headerName = substr( $headersTmpArray[$i] , 0 , strpos( $headersTmpArray[$i] , ":" ) );
+                    $headerValue = substr( $headersTmpArray[$i] , strpos( $headersTmpArray[$i] , ":" )+1 );
+                    $headers[trim($headerName)] = trim($headerValue);
+                }
+            }
+        }
+        return $headers;
+    }
+
     /**
      * createUser
      *
@@ -186,7 +321,7 @@ class DiscourseAPI
      * @return mixed HTTP return code and API return object
      */
 
-    function createUser($name, $userName, $emailAddress, $password)
+    function createUser($name, $userName, $emailAddress, $password, $active = false)
     {
         $obj = $this->_getRequest('/users/hp.json');
         if ($obj->http_code != 200) {
@@ -199,7 +334,8 @@ class DiscourseAPI
             'email' => $emailAddress,
             'password' => $password,
             'challenge' => strrev($obj->apiresult->challenge),
-            'password_confirmation' => $obj->apiresult->value
+            'password_confirmation' => $obj->apiresult->value,
+            'active' => $active
         );
 
         return $this->_postRequest('/users', $params);
@@ -210,7 +346,7 @@ class DiscourseAPI
      *
      * @param integer $userId      id of user to activate
      *
-     * @return mixed HTTP return code 
+     * @return mixed HTTP return code
      */
 
     function activateUser($userId)
@@ -304,12 +440,43 @@ class DiscourseAPI
      * getTopic
      *
      * @param string $topicId   id of topic
+     * @param string $userName  User name in order to get info on the watch status on the topic
      *
      * @return mixed HTTP return code and API return object
      */
-    function getTopic($topicID)
+    function getTopic($topicID, $userName = 'system')
     {
-        return $this->_getRequest('/t/' . $topicID . '.json');
+        return $this->_getRequest('/t/' . $topicID . '.json', array(), $userName);
+    }
+
+    /**
+     * Tell if a given username is watching a given topic
+     *
+     * @param string $topicId   id of topic
+     * @param string $userName  User name in order to get info on the watch status on the topic
+     *
+     * @return mixed The level of watch (0, 1, 2 or 3)
+     *
+     * Muted: 0
+     * Normal: 1
+     * Tracking: 2
+     * Watching: 3
+     */
+    function isWatchingTopic($topicId, $userName)
+    {
+        $r = $this->getTopic($topicId, $userName);
+
+        return $r->apiresult->details->notification_level;
+    }
+
+    function getTopicIdForPost($postId)
+    {
+        $r = $this->_getRequest('/posts/' . $postId . '.json');
+
+        if (!empty($r->apiresult) || !empty($r->apiresult->topic_id))
+            return $r->apiresult->topic_id;
+
+        return false;
     }
 
     /**
@@ -323,7 +490,7 @@ class DiscourseAPI
      *
      * @return mixed HTTP return code and API return object
      */
-    function createTopic($topicTitle, $bodyText, $categoryId, $userName, $replyToId = 0)
+    function createTopic($topicTitle, $bodyText, $categoryId, $userName, $replyToId = 0, $created_at = null, $tags = array(), $external_id = null)
     {
         $params = array(
             'title' => $topicTitle,
@@ -331,7 +498,29 @@ class DiscourseAPI
             'category' => $categoryId,
             'archetype' => 'regular',
             'reply_to_post_number' => $replyToId,
+            'created_at' => $created_at
         );
+
+        if (!empty($external_id))
+            $params['external_id'] = $external_id;
+
+        foreach ($tags as $k => $tag)
+            $params["tags[$k]"] = $tag;
+
+        return $this->_postRequest('/posts', $params, $userName);
+    }
+
+    function createTopicForEmbed($topicTitle, $bodyText, $categoryId, $userName, $embedURL, $external_id)
+    {
+        $params = array(
+            'title' => $topicTitle,
+            'raw' => $bodyText,
+            'category' => $categoryId,
+            'archetype' => 'regular',
+            'embed_url' => $embedURL,
+            'external_id' => $external_id
+        );
+
         return $this->_postRequest('/posts', $params, $userName);
     }
 
@@ -360,11 +549,12 @@ class DiscourseAPI
      *
      * @return mixed HTTP return code and API return object
      */
-    function createPost($bodyText, $topicId, $userName)
+    function createPost($bodyText, $topicId, $userName, $created_at = null)
     {
         $params = array(
             'raw' => $bodyText,
-            'topic_id' => $topicId
+            'topic_id' => $topicId,
+            'created_at' => $created_at
         );
         return $this->_postRequest('/posts', $params, $userName);
     }
@@ -405,4 +595,13 @@ class DiscourseAPI
     {
         return $this->_getRequest("/users/{$username}.json");
     }
+
+    function acceptPost($topicId, $userName)
+    {
+        $params = array(
+            'id' => $topicId
+        );
+        return $this->_postRequest('/solution/accept.json', $params, $userName);
+    }
+
 }
