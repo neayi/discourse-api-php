@@ -377,10 +377,14 @@ class DiscourseAPI
 
     function getUsernameByEmail($email)
     {
+        if (empty($email))
+            throw new Exception("Empty email used for getting a username", 1);
+
         $users = $this->_getRequest(
             '/admin/users/list/active.json',
             ['filter' => $email, 'show_emails' => 'true']
         );
+
         foreach ($users->apiresult as $user) {
             if ($user->email === $email) {
                 return $user->username;
@@ -486,7 +490,7 @@ class DiscourseAPI
      * @param string $bodyText     body text of topic post
      * @param string $categoryName category to create topic in
      * @param string $userName     user to create topic as
-     * @param string $replyToId    post id to reply as
+     * @param string $replyToId    post id to reply as (deprecated, use createPost for that)
      *
      * @return mixed HTTP return code and API return object
      */
@@ -497,7 +501,6 @@ class DiscourseAPI
             'raw' => $bodyText,
             'category' => $categoryId,
             'archetype' => 'regular',
-            'reply_to_post_number' => $replyToId,
             'created_at' => $created_at
         );
 
@@ -510,16 +513,20 @@ class DiscourseAPI
         return $this->_postRequest('/posts', $params, $userName);
     }
 
-    function createTopicForEmbed($topicTitle, $bodyText, $categoryId, $userName, $embedURL, $external_id)
+    function createTopicForEmbed($topicTitle, $bodyText, $categoryId, $userName, $embedURL = '', $external_id = null)
     {
         $params = array(
             'title' => $topicTitle,
             'raw' => $bodyText,
-            'category' => $categoryId,
-            'archetype' => 'regular',
-            'embed_url' => $embedURL,
-            'external_id' => $external_id
+            'archetype' => 'regular'
         );
+
+        if (!empty($categoryId))
+            $params['category'] = $categoryId;
+        if (!empty($embedURL))
+            $params['embed_url'] = $embedURL;
+        if (!empty($external_id))
+            $params['external_id'] = $external_id;
 
         return $this->_postRequest('/posts', $params, $userName);
     }
@@ -549,13 +556,22 @@ class DiscourseAPI
      *
      * @return mixed HTTP return code and API return object
      */
-    function createPost($bodyText, $topicId, $userName, $created_at = null)
+    function createPost($bodyText, $topicId, $userName, $created_at = null, $postNumber = null)
     {
         $params = array(
             'raw' => $bodyText,
-            'topic_id' => $topicId,
-            'created_at' => $created_at
+            'topic_id' => $topicId
         );
+
+        if (!empty($created_at))
+            $params['created_at'] = $created_at;
+
+        if (!empty($postNumber))
+        {
+            $params['reply_to_post_number'] = $postNumber;
+            $params['nested_post'] = 1;
+        }
+
         return $this->_postRequest('/posts', $params, $userName);
     }
 
