@@ -588,8 +588,7 @@ class DiscourseAPI
 		}
 
 		return $r->apiresult->topic_id;
-}
-
+    }
 
     /**
      * watchTopic
@@ -601,9 +600,24 @@ class DiscourseAPI
      */
     function watchTopic($topicId, $userName = 'system')
     {
-        print_r($topicId);
         $params = array(
             'notification_level' => '3'
+        );
+        return $this->_postRequest("/t/{$topicId}/notifications.json", $params, $userName);
+    }
+
+    /**
+     * watchTopic
+     *
+     * watch Topic. If username is given, API-Key must be
+     * general API key. Otherwise it will fail.
+     * If no username is given, topic will be watched with
+     * the system API username
+     */
+    function unwatchTopic($topicId, $userName = 'system')
+    {
+        $params = array(
+            'notification_level' => '1'
         );
         return $this->_postRequest("/t/{$topicId}/notifications.json", $params, $userName);
     }
@@ -681,4 +695,35 @@ class DiscourseAPI
         return $this->_postRequest('/solution/accept.json', $params, $userName);
     }
 
+    /**
+     * Create a user on discourse
+     * Returns the newly created username
+     */
+	function createDiscourseUser(User $user, int $increment = 0)
+	{
+        $username = str_replace(' ', '.', $user->getRealName());
+
+        if (!empty($increment))
+            $username .= $increment;
+
+        $userEmail = $user->getEmail();
+        $userEmail = str_replace('tripleperformance.fr', 'neayi.com', $userEmail);
+
+		$r = $this->createUserNoPassword($user->getRealName(), $username, $userEmail, true);
+
+		if (empty($r->apiresult))
+			throw new \Exception("Could not connect to the Discourse API", 1);
+
+		if ($r->apiresult->success)
+			return $username;
+
+		if (!empty($r->apiresult->errors->username[0]) &&
+			strpos($r->apiresult->errors->username[0], 'unique') !== false)
+		{
+			$increment++;
+			return $this->createDiscourseUser($user, $increment);
+		}
+
+		throw new \Exception($r->apiresult->message);
+	}
 }
