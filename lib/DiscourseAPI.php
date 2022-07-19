@@ -338,7 +338,31 @@ class DiscourseAPI
             'active' => $active
         );
 
-        return $this->_postRequest('/users', $params);
+        return $this->_postRequest('/users.json', $params);
+    }
+
+    /**
+     * createUser
+     *
+     * @param string $name         name of new user
+     * @param string $userName     username of new user
+     * @param string $emailAddress email address of new user
+     * @param string $password     password of new user
+     *
+     * @return mixed HTTP return code and API return object
+     */
+
+    function createUserNoPassword($name, $userName, $emailAddress, $active = false)
+    {
+        $params = array(
+            'name' => $name,
+            'username' => $userName,
+            'email' => $emailAddress,
+            'password' => uniqid().uniqid(),
+            'active' => $active
+        );
+
+        return $this->_postRequest('/users.json', $params);
     }
 
     /**
@@ -532,6 +556,42 @@ class DiscourseAPI
     }
 
     /**
+     * Same as createTopicForEmbed but returns the topic ID for the newly created topic. If the topic already exists
+     * returns the topic ID as well.
+     */
+    function createTopicForEmbed2($topicTitle, $bodyText, $categoryId, $userName, $embedURL = '', $external_id = null)
+    {
+		// create a topic
+        $r = $this->createTopicForEmbed(
+			$topicTitle,
+			$bodyText,
+			$categoryId,
+			$userName,
+			$embedURL,
+			$external_id
+		);
+
+		if (empty($r->apiresult) || !isset($r->apiresult->topic_id))
+		{
+			if ($r->http_code == 422)
+			{
+				// The topic already exists for this page...
+
+				// Find the topic id for the given URL
+				$r = $this->getPostsByEmbeddedURL($embedURL);
+
+				if (isset($r->apiresult->topic_id))
+					return $r->apiresult->topic_id;
+
+				return false;
+			}
+		}
+
+		return $r->apiresult->topic_id;
+}
+
+
+    /**
      * watchTopic
      *
      * watch Topic. If username is given, API-Key must be
@@ -541,6 +601,7 @@ class DiscourseAPI
      */
     function watchTopic($topicId, $userName = 'system')
     {
+        print_r($topicId);
         $params = array(
             'notification_level' => '3'
         );
