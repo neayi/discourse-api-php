@@ -537,7 +537,7 @@ class DiscourseAPI
         return $this->_postRequest('/posts', $params, $userName);
     }
 
-    function createTopicForEmbed($topicTitle, $bodyText, $categoryId, $userName, $embedURL = '', $external_id = null)
+    function createTopicForEmbed(String $topicTitle, String $bodyText, Int $categoryId, String $userName, String $embedURL = '', Int $external_id = null)
     {
         $params = array(
             'title' => $topicTitle,
@@ -559,7 +559,7 @@ class DiscourseAPI
      * Same as createTopicForEmbed but returns the topic ID for the newly created topic. If the topic already exists
      * returns the topic ID as well.
      */
-    function createTopicForEmbed2($topicTitle, $bodyText, $categoryId, $userName, $embedURL = '', $external_id = null)
+    function createTopicForEmbed2(String $topicTitle, String $bodyText, Int $categoryId, String $userName, String $embedURL = '', Int $external_id = null)
     {
 		// create a topic
         $r = $this->createTopicForEmbed(
@@ -575,15 +575,17 @@ class DiscourseAPI
 		{
 			if ($r->http_code == 422)
 			{
-				// The topic already exists for this page...
+				// The topic may already exist for this page...
 
 				// Find the topic id for the given URL
-				$r = $this->getPostsByEmbeddedURL($embedURL);
+				$r2 = $this->getPostsByEmbeddedURL($embedURL);
 
-				if (isset($r->apiresult->topic_id))
-					return $r->apiresult->topic_id;
+				if (isset($r2->apiresult->topic_id))
+					return $r2->apiresult->topic_id;
 
-				return false;
+                throw new Exception("Error Processing Request - $topicTitle \n"
+                                    . print_r($r, true) . "\n"
+                                    . print_r($r2, true), 1);
 			}
 		}
 
