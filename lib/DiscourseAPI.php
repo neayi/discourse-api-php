@@ -589,7 +589,17 @@ class DiscourseAPI
 			}
 		}
 
+        $this->rebakePost($r->apiresult->id);
+
 		return $r->apiresult->topic_id;
+    }
+
+    /**
+     * Rebake the html for a post
+     */
+    function rebakePost($postId)
+    {
+        return $this->_putRequest("/posts/{$postId}/rebake", null);
     }
 
     /**
