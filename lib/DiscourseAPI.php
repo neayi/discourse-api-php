@@ -223,8 +223,12 @@ class DiscourseAPI
 
     function getPostsByEmbeddedURL($url)
     {
+        $url = str_replace('fr.dev.tripleperformance.ag', 'wiki.dev.tripleperformance.fr', $url);
+        $url = str_replace('fr.tripleperformance.ag', 'wiki.tripleperformance.fr', $url);
+
         return $this->_getRequest("/embed/info", array('embed_url' => $url));
     }
+
 
     function getPostByExternalID($external_id)
     {
