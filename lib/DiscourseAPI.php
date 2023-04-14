@@ -549,6 +549,9 @@ class DiscourseAPI
             'archetype' => 'regular'
         );
 
+        $embedURL = str_replace('fr.dev.tripleperformance.ag', 'wiki.dev.tripleperformance.fr', $embedURL);
+        $embedURL = str_replace('fr.tripleperformance.ag', 'wiki.tripleperformance.fr', $embedURL);
+
         if (!empty($categoryId))
             $params['category'] = $categoryId;
         if (!empty($embedURL))
