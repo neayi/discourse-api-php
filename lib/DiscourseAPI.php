@@ -111,10 +111,14 @@ class DiscourseAPI
         ]);
 
         // Hack !
-        $params = http_build_query($paramArray);
-        $params = preg_replace('@tags%5B[0-9]+%5D@', 'tags%5B%5D', $params);
+        $paramString = '';
+        if (!empty($paramArray))
+        {
+            $paramString = http_build_query($paramArray);
+            $paramString = preg_replace('@tags%5B[0-9]+%5D@', 'tags%5B%5D', $paramString);
+        }
 
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $params);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $paramString);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         if ($putMethod) {
             curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
