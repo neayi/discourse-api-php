@@ -65,6 +65,8 @@ class DiscourseAPI
 
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+
         $body = curl_exec($ch);
 
         $curl_errno = curl_errno($ch);
@@ -233,68 +235,10 @@ class DiscourseAPI
         return $this->_getRequest("/embed/info", array('embed_url' => $url));
     }
 
+    public function getTopicByExternalID($external_id) {
+        $topic = $this->_getRequest("/t/external_id/{$external_id}.json");
 
-    function getPostByExternalID($external_id)
-    {
-        $apiUser = 'system';
-
-        $reqString = "/t/external_id/{$external_id}.json";
-
-        $ch = curl_init();
-        $url = sprintf(
-            '%s://%s%s',
-            $this->_protocol,
-            $this->_dcHostname,
-            $reqString
-        );
-
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            "API-KEY: " . $this->_apiKey,
-            "API-USERNAME: $apiUser"
-        ]);
-
-        if (!empty($this->_httpAuthName) && !empty($this->_httpAuthPass)) {
-            curl_setopt($ch, CURLOPT_USERPWD, $this->_httpAuthName . ":" . $this->_httpAuthPass);
-            curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
-        }
-
-        if ($this->_ignoreSSL)
-        {
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
-        }
-
-        curl_setopt($ch, CURLOPT_URL, $url);
-
-        // include the response headers in the output
-        curl_setopt($ch, CURLOPT_HEADER, true);
-
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-
-        $result = curl_exec($ch);
-        $rc = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
-        $curl_errno = curl_errno($ch);
-        $curl_error = curl_error($ch);
-
-        if ($curl_errno > 0) {
-            throw new Exception("cURL Error ($curl_errno): $curl_error", 1);
-        }
-
-        // how big are the headers
-        $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-        $headerStr = substr($result, 0, $headerSize);
-        $body = substr($result, $headerSize);
-
-        // convert headers to array
-        $headers = $this->headersToArray( $headerStr );
-
-        curl_close($ch);
-
-        if (!empty($headers['location']))
-            return $headers['location'];
-
-        return '';
+        return $topic->apiresult->id;
     }
 
     private function headersToArray( $str )
@@ -545,7 +489,7 @@ class DiscourseAPI
         return $this->_postRequest('/posts', $params, $userName);
     }
 
-    function createTopicForEmbed(String $topicTitle, String $bodyText, Int $categoryId, String $userName, String $embedURL = '', Int $external_id = null)
+    function createTopicForEmbed(String $topicTitle, String $bodyText, Int $categoryId, String $userName, String $embedURL = '', Int $external_id = 0)
     {
         $params = array(
             'title' => $topicTitle,
@@ -570,7 +514,7 @@ class DiscourseAPI
      * Same as createTopicForEmbed but returns the topic ID for the newly created topic. If the topic already exists
      * returns the topic ID as well.
      */
-    function createTopicForEmbed2(String $topicTitle, String $bodyText, Int $categoryId, String $userName, String $embedURL = '', Int $external_id = null)
+    function createTopicForEmbed2(String $topicTitle, String $bodyText, Int $categoryId, String $userName, String $embedURL = '', Int $external_id = 0)
     {
 		// create a topic
         $r = $this->createTopicForEmbed(
@@ -587,6 +531,9 @@ class DiscourseAPI
 			if ($r->http_code == 422)
 			{
 				// The topic may already exist for this page...
+
+                if ($external_id)
+                    return $this->getTopicByExternalID($external_id);
 
 				// Find the topic id for the given URL
 				$r2 = $this->getPostsByEmbeddedURL($embedURL);
