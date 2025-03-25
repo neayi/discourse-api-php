@@ -235,10 +235,14 @@ class DiscourseAPI
         return $this->_getRequest("/embed/info", array('embed_url' => $url));
     }
 
-    public function getTopicByExternalID($external_id) {
+    public function getTopicIdByExternalID($external_id) {
         $topic = $this->_getRequest("/t/external_id/{$external_id}.json");
 
         return $topic->apiresult->id;
+    }
+
+    public function getTopicByExternalID($external_id) {
+        return $this->_getRequest("/t/external_id/{$external_id}.json");
     }
 
     private function headersToArray( $str )
