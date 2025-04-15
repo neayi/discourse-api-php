@@ -112,12 +112,20 @@ class DiscourseAPI
             "Api-Username: $apiUser"
         ]);
 
-        // Hack !
-        $paramString = '';
+        $paramString = '';        
         if (!empty($paramArray))
         {
-            $paramString = http_build_query($paramArray);
-            $paramString = preg_replace('@tags%5B[0-9]+%5D@', 'tags%5B%5D', $paramString);
+            if (is_array($paramArray))
+            {
+                $paramString = http_build_query($paramArray);
+                // Hack !
+                $paramString = preg_replace('@tags%5B[0-9]+%5D@', 'tags%5B%5D', $paramString);
+                $paramString = preg_replace('@tag_names%5B[0-9]+%5D@', 'tag_names%5B%5D', $paramString);   
+            }
+            else
+            {
+                $paramString = $paramArray;
+            }
         }
 
         curl_setopt($ch, CURLOPT_POSTFIELDS, $paramString);
@@ -493,13 +501,16 @@ class DiscourseAPI
         return $this->_postRequest('/posts', $params, $userName);
     }
 
-    function createTopicForEmbed(String $topicTitle, String $bodyText, Int $categoryId, String $userName, String $embedURL = '', Int $external_id = 0)
+    function createTopicForEmbed(String $topicTitle, String $bodyText, Int $categoryId, Array $tags, String $userName, String $embedURL = '', Int $external_id = 0)
     {
         $params = array(
             'title' => $topicTitle,
             'raw' => $bodyText,
             'archetype' => 'regular'
         );
+
+        foreach ($tags as $k => $tag)
+            $params['tags[' . $k . ']'] = $tag;
 
         $embedURL = str_replace('fr.dev.tripleperformance.ag', 'wiki.dev.tripleperformance.fr', $embedURL);
         $embedURL = str_replace('fr.tripleperformance.ag', 'wiki.tripleperformance.fr', $embedURL);
@@ -518,13 +529,16 @@ class DiscourseAPI
      * Same as createTopicForEmbed but returns the topic ID for the newly created topic. If the topic already exists
      * returns the topic ID as well.
      */
-    function createTopicForEmbed2(String $topicTitle, String $bodyText, Int $categoryId, String $userName, String $embedURL = '', Int $external_id = 0)
+    function createTopicForEmbed2(String $topicTitle, String $bodyText, Int $categoryId, Array $tags, String $userName, String $embedURL = '', Int $external_id = 0)
     {
+        $embedURL = '';
+        
 		// create a topic
         $r = $this->createTopicForEmbed(
 			$topicTitle,
 			$bodyText,
 			$categoryId,
+            $tags,
 			$userName,
 			$embedURL,
 			$external_id
@@ -571,11 +585,12 @@ class DiscourseAPI
      * general API key. Otherwise it will fail.
      * If no username is given, topic will be watched with
      * the system API username
+     * $notificationLevel = 3 (default)
      */
-    function watchTopic($topicId, $userName = 'system')
+    function watchTopic($topicId, $userName = 'system', $notificationLevel = 3)
     {
         $params = array(
-            'notification_level' => '3'
+            'notification_level' => $notificationLevel
         );
         return $this->_postRequest("/t/{$topicId}/notifications.json", $params, $userName);
     }
@@ -594,6 +609,90 @@ class DiscourseAPI
             'notification_level' => '1'
         );
         return $this->_postRequest("/t/{$topicId}/notifications.json", $params, $userName);
+    }
+
+    /**
+     * Watch a tag
+     * 
+     * The tag must be created before
+     * $userName should be the name of the user to watch the tag as
+     * $notificationLevel = 3 (default)
+     * 
+     * 4 : tracked
+     * 3 : watched
+     * 2 : watching_first_post
+     * 1 : regular
+     * 0 : muted
+     */
+    function watchTag($tag, $userName = 'system', $notificationLevel = 3)
+    {
+        $params = array(
+            'tag_notification[notification_level]' => $notificationLevel
+        );
+
+        $tag = $this->fixTagSyntax($tag);
+
+        $ret = $this->_putRequest("/tag/{$tag}/notifications", $params, $userName);
+
+        return $ret;
+    }
+
+    function unwatchTag($tag, $userName = 'system')
+    {
+        $params = array(
+            'tag_notification[notification_level]' => '1'
+        );
+
+        $tag = $this->fixTagSyntax($tag);
+
+        $ret = $this->_putRequest("/tag/{$tag}/notifications", $params, $userName);
+
+        return $ret;
+    }
+
+    function createTag($tag, $groupId, $userName = 'system') {
+        $tagGroup = $this->_getRequest('/tag_groups/' . $groupId . '.json')->apiresult;
+
+        if (!empty($tagGroup->error))
+            throw new Exception("Unknown tag group - " . print_r($tagGroup->error, true), 1);
+
+        $tag = $this->fixTagSyntax($tag);
+
+        if (in_array($tag, $tagGroup->tag_group->tag_names))
+            return true;
+
+        $tagGroup->tag_group->tag_names[] = $tag;
+        unset($tagGroup->tag_group->id);
+        $tagGroup->tag_group->name = md5($tag);
+
+        $params = json_encode($tagGroup->tag_group, JSON_UNESCAPED_UNICODE);
+        $params = array(
+        );
+        foreach ($tagGroup->tag_group->tag_names as $k => $tag)
+            $params["tag_names[$k]"] = $tag;
+
+        return $this->_putRequest('/tag_groups/' . $groupId . '.json', $params, $userName);
+    }
+
+    function tagExists($tag) {
+        $tag = $this->fixTagSyntax($tag);
+
+        $tag = $this->_getRequest('/tag/' . $tag . '.json')->apiresult;
+
+        return empty($tag->errors);
+    }
+
+    /**
+     * Removes all spaces and other special characters from a tag
+     */
+    function fixTagSyntax($tag) {
+        $tag = str_replace(' ', '-', $tag);
+
+        // \pL - matches any kind of letter from any language
+        // \pM - matches a character intended to be combined with another character (e.g. accents, umlauts, enclosing boxes, etc.)
+        $tag = mb_ereg_replace('[^\p{L}\p{M}0-9-]+', '', $tag);
+
+        return $tag;
     }
 
     /**
