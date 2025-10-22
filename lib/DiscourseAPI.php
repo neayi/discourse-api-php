@@ -81,7 +81,21 @@ class DiscourseAPI
 
         $resObj = new \stdClass();
         $resObj->http_code = $rc;
-        $resObj->apiresult = json_decode($body);
+        
+        // Only try to decode JSON if we got a response body
+        if (!empty($body)) {
+            $resObj->apiresult = json_decode($body);
+            
+            // If JSON decode failed, store the raw body for debugging
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $resObj->apiresult = null;
+                $resObj->raw_body = $body;
+                $resObj->json_error = json_last_error_msg();
+            }
+        } else {
+            $resObj->apiresult = null;
+        }
+        
         return $resObj;
     }
 
@@ -246,7 +260,11 @@ class DiscourseAPI
     public function getTopicIdByExternalID($external_id) {
         $topic = $this->_getRequest("/t/external_id/{$external_id}.json");
 
-        return $topic->apiresult->id;
+        if (isset($topic->apiresult->id)) {
+            return $topic->apiresult->id;
+        }
+        
+        return false;
     }
 
     public function getTopicByExternalID($external_id) {
